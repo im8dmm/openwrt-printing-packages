@@ -1,4 +1,4 @@
-name: Build Ghostscript IPK
+name: Build Ghostscript with custom SDK
 
 on:
   workflow_dispatch:
@@ -7,19 +7,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout code (printing packages)
+        uses: actions/checkout@v4
+        with:
+          repository: FranciscoBorges/openwrt-printing-packages
+          path: printing-packages
 
-    - name: Build the package
-      uses: openwrt/gh-action-sdk@v7  # 使用最新的 v7 版本，支持更完善的配置
-      env:
-        ARCH: mediatek/filogic-23.05.4  # 根据你的需求，在这两种格式中二选一
-        FEEDNAME: printing
-        PACKAGES: ghostscript
+      - name: Download OpenWrt SDK
+        run: |
+          SDK_URL="https://downloads.openwrt.org/releases/23.05.4/targets/mediatek/filogic/openwrt-sdk-23.05.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+          wget $SDK_URL
+          tar -xf openwrt-sdk-*.tar.xz
+          mv openwrt-sdk-* sdk
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: ghostscript-mediatek-filogic
-        path: bin/packages/*/packages/*.ipk
+      - name: Install printing feed
+        run: |
+          cd sdk
+          # 将打印软件包源添加到 feeds.conf
+          echo 'src-git printing https://github.com/FranciscoBorges/openwrt-printing-packages.git' >> feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a -p printing
+
+      - name: Configure build (select ghostscript)
+        run: |
+          cd sdk
+          # 设置编译 ghostscript 所需的配置
+          echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
+          # 如果 ghostscript 有依赖，也需要一并勾选，这里假设 cups 是依赖
+          echo 'CONFIG_PACKAGE_cups=y' >> .config
+          make defconfig
+
+      - name: Compile ghostscript
+        run: |
+          cd sdk
+          make package/ghostscript/compile V=s
+
+      - name: Upload IPK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghostscript-ipk
+          path: sdk/bin/packages/*/packages/*.ipk
