@@ -7,23 +7,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code (printing packages)
+      - name: Checkout printing packages
         uses: actions/checkout@v4
         with:
           repository: FranciscoBorges/openwrt-printing-packages
           path: printing-packages
 
-      - name: Download OpenWrt SDK
+      - name: Download and extract OpenWrt SDK
         run: |
           SDK_URL="https://downloads.openwrt.org/releases/23.05.4/targets/mediatek/filogic/openwrt-sdk-23.05.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
           wget $SDK_URL
           tar -xf openwrt-sdk-*.tar.xz
-          mv openwrt-sdk-* sdk
+          sdk_dir=$(ls -d openwrt-sdk-*/ | head -1)
+          mv "$sdk_dir" sdk
+          rm openwrt-sdk-*.tar.xz
 
       - name: Install printing feed
         run: |
           cd sdk
-          # 将打印软件包源添加到 feeds.conf
           echo 'src-git printing https://github.com/FranciscoBorges/openwrt-printing-packages.git' >> feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a -p printing
@@ -31,9 +32,7 @@ jobs:
       - name: Configure build (select ghostscript)
         run: |
           cd sdk
-          # 设置编译 ghostscript 所需的配置
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
-          # 如果 ghostscript 有依赖，也需要一并勾选，这里假设 cups 是依赖
           echo 'CONFIG_PACKAGE_cups=y' >> .config
           make defconfig
 
