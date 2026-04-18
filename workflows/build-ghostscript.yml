@@ -1,0 +1,25 @@
+name: Build Ghostscript IPK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Build the package
+      uses: openwrt/gh-action-sdk@v7  # 使用最新的 v7 版本，支持更完善的配置
+      env:
+        ARCH: mediatek/filogic-23.05.4  # 根据你的需求，在这两种格式中二选一
+        FEEDNAME: printing
+        PACKAGES: ghostscript
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ghostscript-mediatek-filogic
+        path: bin/packages/*/packages/*.ipk
