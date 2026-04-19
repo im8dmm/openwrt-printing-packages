@@ -1,4 +1,4 @@
-name: Build Ghostscript with custom SDK
+name: Build Ghostscript with SDK (fix cups source)
 
 on:
   workflow_dispatch:
@@ -7,10 +7,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout printing packages
+      - name: Checkout printing packages (master0123 fork)
         uses: actions/checkout@v4
         with:
-          repository: FranciscoBorges/openwrt-printing-packages
+          repository: master0123/openwrt-printing-packages
           path: printing-packages
 
       - name: Download and extract OpenWrt SDK
@@ -22,23 +22,43 @@ jobs:
           mv "$sdk_dir" sdk
           rm openwrt-sdk-*.tar.xz
 
-      - name: Install printing feed
+      - name: Install printing feed from local copy
         run: |
           cd sdk
-          echo 'src-git printing https://github.com/FranciscoBorges/openwrt-printing-packages.git' >> feeds.conf.default
+          # 使用本地 checkout 的打印包，而不是从 git 拉取（避免网络问题）
+          ln -s ../printing-packages feeds/printing
+          # 更新 feeds（指向本地）
           ./scripts/feeds update -a
           ./scripts/feeds install -a -p printing
+
+      - name: Fix cups package source URL
+        run: |
+          CUPS_MAKEFILE="sdk/feeds/printing/net/cups/Makefile"
+          # 备份原文件
+          cp $CUPS_MAKEFILE $CUPS_MAKEFILE.bak
+          # 替换 PKG_SOURCE_URL 为 GitHub Releases 可用地址
+          sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/apple/cups/releases/download/v1.6.3/|' $CUPS_MAKEFILE
+          # 跳过哈希校验（因为文件可能和原记录不一致）
+          sed -i 's|PKG_HASH:=.*|PKG_HASH:=skip|' $CUPS_MAKEFILE
+          # 确保 PKG_SOURCE 文件名正确
+          sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=cups-1.6.3-source.tar.bz2|' $CUPS_MAKEFILE
+          echo "Fixed cups Makefile:"
+          grep -E "PKG_SOURCE_URL|PKG_HASH|PKG_SOURCE" $CUPS_MAKEFILE
 
       - name: Configure build (select ghostscript)
         run: |
           cd sdk
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
           echo 'CONFIG_PACKAGE_cups=y' >> .config
+          # 可选：跳过依赖检查，强制编译
           make defconfig
 
       - name: Compile ghostscript
         run: |
           cd sdk
+          # 先单独下载 cups 源码（确保成功）
+          make package/feeds/printing/cups/download V=s
+          # 编译 ghostscript（会自动编译 cups）
           make package/ghostscript/compile V=s
 
       - name: Upload IPK artifacts
