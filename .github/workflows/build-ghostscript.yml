@@ -1,4 +1,4 @@
-name: Build Ghostscript using official feeds
+name: Build Ghostscript
 
 on:
   workflow_dispatch:
@@ -7,6 +7,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout printing packages (your fork)
+        uses: actions/checkout@v4
+        with:
+          repository: im8dmm/openwrt-printing-packages
+          path: printing-packages
+
       - name: Download and extract OpenWrt SDK
         run: |
           SDK_URL="https://downloads.openwrt.org/releases/23.05.4/targets/mediatek/filogic/openwrt-sdk-23.05.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
@@ -16,22 +22,49 @@ jobs:
           mv "$sdk_dir" sdk
           rm openwrt-sdk-*.tar.xz
 
-      - name: Update feeds and install ghostscript
+      - name: Install printing feed and ghostscript
         run: |
           cd sdk
+          # 添加 printing feed（使用你的 fork 地址）
+          echo 'src-git printing https://github.com/im8dmm/openwrt-printing-packages.git' >> feeds.conf.default
+          # 更新所有 feeds
           ./scripts/feeds update -a
-          ./scripts/feeds install ghostscript
+          # 搜索 ghostscript 确认存在
+          ./scripts/feeds search ghostscript
+          # 安装 ghostscript 包（-f 强制覆盖）
+          ./scripts/feeds install -f -p printing ghostscript
+          # 验证安装是否成功
+          if [ -f package/feeds/printing/print/ghostscript/Makefile ]; then
+            echo "ghostscript installed successfully"
+          else
+            echo "ERROR: ghostscript Makefile not found!"
+            find package/feeds -name "ghostscript" -type d
+            exit 1
+          fi
 
-      - name: Configure build (select ghostscript and dependencies)
+      - name: Remove cups dependency from ghostscript
+        run: |
+          GS_MAKEFILE="sdk/package/feeds/printing/print/ghostscript/Makefile"
+          # 备份原文件
+          cp $GS_MAKEFILE $GS_MAKEFILE.bak
+          # 删除 DEPENDS 行中的 cups
+          sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
+          sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
+          # 删除 configure 参数中的 --with-cups
+          sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
+          echo "Removed cups dependency from ghostscript"
+
+      - name: Configure build (select ghostscript and base libraries)
         run: |
           cd sdk
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
-          # 添加可能的基础依赖（官方 feed 会自动处理，但显式添加无害）
           echo 'CONFIG_PACKAGE_zlib=y' >> .config
           echo 'CONFIG_PACKAGE_libpng=y' >> .config
           echo 'CONFIG_PACKAGE_libjpeg=y' >> .config
           echo 'CONFIG_PACKAGE_libtiff=y' >> .config
           echo 'CONFIG_PACKAGE_libexpat=y' >> .config
+          # 确保不选中 cups
+          echo '# CONFIG_PACKAGE_cups is not set' >> .config
           make defconfig
 
       - name: Compile ghostscript
