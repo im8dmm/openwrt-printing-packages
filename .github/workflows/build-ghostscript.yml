@@ -1,4 +1,4 @@
-name: Build Ghostscript
+name: Build Ghostscript (without CUPS)
 
 on:
   workflow_dispatch:
@@ -25,17 +25,17 @@ jobs:
       - name: Install printing feed and ghostscript
         run: |
           cd sdk
-          # 添加 printing feed（使用你的 fork 地址）
+          # 添加 printing feed（使用你的 fork）
           echo 'src-git printing https://github.com/im8dmm/openwrt-printing-packages.git' >> feeds.conf.default
           # 更新所有 feeds
           ./scripts/feeds update -a
           # 搜索 ghostscript 确认存在
           ./scripts/feeds search ghostscript
-          # 安装 ghostscript 包（-f 强制覆盖）
+          # 安装 ghostscript（会自动安装依赖，包括 cups）
           ./scripts/feeds install -f -p printing ghostscript
-          # 验证安装是否成功
-          if [ -f package/feeds/printing/print/ghostscript/Makefile ]; then
-            echo "ghostscript installed successfully"
+          # 验证安装：实际路径是 feeds/printing/net/ghostscript
+          if [ -f package/feeds/printing/net/ghostscript/Makefile ]; then
+            echo "ghostscript installed successfully at package/feeds/printing/net/ghostscript"
           else
             echo "ERROR: ghostscript Makefile not found!"
             find package/feeds -name "ghostscript" -type d
@@ -44,15 +44,16 @@ jobs:
 
       - name: Remove cups dependency from ghostscript
         run: |
-          GS_MAKEFILE="sdk/package/feeds/printing/print/ghostscript/Makefile"
-          # 备份原文件
+          GS_MAKEFILE="sdk/package/feeds/printing/net/ghostscript/Makefile"
           cp $GS_MAKEFILE $GS_MAKEFILE.bak
-          # 删除 DEPENDS 行中的 cups
+          # 删除 DEPENDS 行中的 cups（注意 cups 可能写为 +cups）
           sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
           sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
           # 删除 configure 参数中的 --with-cups
           sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
           echo "Removed cups dependency from ghostscript"
+          # 可选：查看修改后的 DEPENDS 行
+          grep -E "^DEPENDS:=" $GS_MAKEFILE || true
 
       - name: Configure build (select ghostscript and base libraries)
         run: |
@@ -60,7 +61,7 @@ jobs:
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
           echo 'CONFIG_PACKAGE_zlib=y' >> .config
           echo 'CONFIG_PACKAGE_libpng=y' >> .config
-          echo 'CONFIG_PACKAGE_libjpeg=y' >> .config
+          echo 'CONFIG_PACKAGE_libjpeg-turbo=y' >> .config
           echo 'CONFIG_PACKAGE_libtiff=y' >> .config
           echo 'CONFIG_PACKAGE_libexpat=y' >> .config
           # 确保不选中 cups
