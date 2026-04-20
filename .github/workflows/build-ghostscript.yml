@@ -1,4 +1,4 @@
-name: Build Ghostscript without CUPS dependency
+name: Build Ghostscript using official feeds
 
 on:
   workflow_dispatch:
@@ -7,12 +7,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout printing packages (your fork)
-        uses: actions/checkout@v4
-        with:
-          repository: im8dmm/openwrt-printing-packages
-          path: printing-packages
-
       - name: Download and extract OpenWrt SDK
         run: |
           SDK_URL="https://downloads.openwrt.org/releases/23.05.4/targets/mediatek/filogic/openwrt-sdk-23.05.4-mediatek-filogic_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
@@ -22,63 +16,22 @@ jobs:
           mv "$sdk_dir" sdk
           rm openwrt-sdk-*.tar.xz
 
-      - name: Install printing feed using src-link
+      - name: Update feeds and install ghostscript
         run: |
           cd sdk
-          echo "src-link printing $GITHUB_WORKSPACE/printing-packages" >> feeds.conf.default
-          ./scripts/feeds update printing
-          ./scripts/feeds install -a -p printing
+          ./scripts/feeds update -a
+          ./scripts/feeds install ghostscript
 
-      - name: List feeds/printing directory structure (debug)
-        run: |
-          cd sdk
-          echo "Contents of feeds/printing:"
-          ls -la feeds/printing/
-          echo "Searching for ghostscript Makefile:"
-          find feeds/printing -name "Makefile" | grep -i ghostscript || echo "Not found"
-
-      - name: Fix cups package source URL (to avoid download errors)
-        run: |
-          CUPS_MAKEFILE="sdk/feeds/printing/net/cups/Makefile"
-          if [ -f "$CUPS_MAKEFILE" ]; then
-            cp $CUPS_MAKEFILE $CUPS_MAKEFILE.bak
-            sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/im8dmm/openwrt-printing-packages/releases/download/cups-source/|' $CUPS_MAKEFILE
-            sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=cups-1.6.3-source.tar.bz2|' $CUPS_MAKEFILE
-            sed -i 's|PKG_MD5SUM:=.*|PKG_MD5SUM:=skip|' $CUPS_MAKEFILE
-          else
-            echo "Warning: cups Makefile not found at $CUPS_MAKEFILE"
-          fi
-
-      - name: Remove cups dependency from ghostscript
-        run: |
-          # 动态查找 ghostscript Makefile（可能在 print/ghostscript/ 或 ghostscript/ 下）
-          GS_MAKEFILE=$(find sdk/feeds/printing -type f -name "Makefile" | xargs grep -l "PKG_NAME:=ghostscript" 2>/dev/null | head -1)
-          if [ -z "$GS_MAKEFILE" ]; then
-            echo "Error: ghostscript Makefile not found"
-            echo "Searching all Makefiles for ghostscript:"
-            find sdk/feeds/printing -name "Makefile" -exec grep -H "ghostscript" {} \;
-            exit 1
-          fi
-          echo "Found ghostscript Makefile at $GS_MAKEFILE"
-          cp $GS_MAKEFILE $GS_MAKEFILE.bak
-          # 删除 DEPENDS 行中所有 cups 相关依赖
-          sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
-          sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
-          # 删除 configure 参数中的 --with-cups
-          sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
-          echo "Modified ghostscript Makefile:"
-          grep -E "DEPENDS|CONFIGURE_ARGS" $GS_MAKEFILE
-
-      - name: Configure build (select ghostscript and base libraries)
+      - name: Configure build (select ghostscript and dependencies)
         run: |
           cd sdk
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
+          # 添加可能的基础依赖（官方 feed 会自动处理，但显式添加无害）
           echo 'CONFIG_PACKAGE_zlib=y' >> .config
           echo 'CONFIG_PACKAGE_libpng=y' >> .config
           echo 'CONFIG_PACKAGE_libjpeg=y' >> .config
           echo 'CONFIG_PACKAGE_libtiff=y' >> .config
           echo 'CONFIG_PACKAGE_libexpat=y' >> .config
-          echo '# CONFIG_PACKAGE_cups is not set' >> .config
           make defconfig
 
       - name: Compile ghostscript
