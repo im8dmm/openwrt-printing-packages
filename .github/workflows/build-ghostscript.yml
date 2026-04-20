@@ -1,4 +1,4 @@
-name: Build Ghostscript with SDK (fix cups source)
+name: Build Ghostscript without CUPS dependency
 
 on:
   workflow_dispatch:
@@ -29,33 +29,43 @@ jobs:
           ./scripts/feeds update printing
           ./scripts/feeds install -a -p printing
 
-      - name: Fix cups package source URL
+      - name: Fix cups package source URL (to avoid download errors)
         run: |
           CUPS_MAKEFILE="sdk/feeds/printing/net/cups/Makefile"
           cp $CUPS_MAKEFILE $CUPS_MAKEFILE.bak
           sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/im8dmm/openwrt-printing-packages/releases/download/cups-source/|' $CUPS_MAKEFILE
           sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=cups-1.6.3-source.tar.bz2|' $CUPS_MAKEFILE
           sed -i 's|PKG_MD5SUM:=.*|PKG_MD5SUM:=skip|' $CUPS_MAKEFILE
-          echo "Fixed cups Makefile:"
-          grep -E "PKG_SOURCE_URL|PKG_MD5SUM|PKG_SOURCE" $CUPS_MAKEFILE
 
-      - name: Configure build (select ghostscript and dependencies)
+      - name: Remove cups dependency from ghostscript
+        run: |
+          GS_MAKEFILE="sdk/feeds/printing/ghostscript/Makefile"
+          cp $GS_MAKEFILE $GS_MAKEFILE.bak
+          # 删除 DEPENDS 行中所有 cups 相关依赖
+          sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
+          sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
+          # 删除 configure 参数中的 --with-cups
+          sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
+          echo "Modified ghostscript Makefile:"
+          grep -E "DEPENDS|CONFIGURE_ARGS" $GS_MAKEFILE
+
+      - name: Configure build (select ghostscript and base libraries)
         run: |
           cd sdk
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
-          echo 'CONFIG_PACKAGE_cups=y' >> .config
           echo 'CONFIG_PACKAGE_zlib=y' >> .config
           echo 'CONFIG_PACKAGE_libpng=y' >> .config
           echo 'CONFIG_PACKAGE_libjpeg=y' >> .config
           echo 'CONFIG_PACKAGE_libtiff=y' >> .config
           echo 'CONFIG_PACKAGE_libexpat=y' >> .config
-          echo 'CONFIG_PACKAGE_libusb-1.0=y' >> .config
+          # 确保不选择 cups
+          echo '# CONFIG_PACKAGE_cups is not set' >> .config
           make defconfig
 
       - name: Compile ghostscript
         run: |
           cd sdk
-          make package/feeds/printing/cups/download V=s
+          # 直接编译 ghostscript，不会触发 cups 编译
           make package/ghostscript/compile V=s
 
       - name: Upload IPK artifacts
