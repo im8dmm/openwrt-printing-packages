@@ -25,7 +25,6 @@ jobs:
       - name: Install printing feed using src-link
         run: |
           cd sdk
-          # 添加本地 feed，src-link 会自动创建符号链接到 feeds/printing
           echo "src-link printing $GITHUB_WORKSPACE/printing-packages" >> feeds.conf.default
           ./scripts/feeds update printing
           ./scripts/feeds install -a -p printing
@@ -34,17 +33,23 @@ jobs:
         run: |
           CUPS_MAKEFILE="sdk/feeds/printing/net/cups/Makefile"
           cp $CUPS_MAKEFILE $CUPS_MAKEFILE.bak
-          sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/apple/cups/releases/download/v1.6.3/|' $CUPS_MAKEFILE
-          sed -i 's|PKG_MD5SUM:=.*|PKG_MD5SUM:=skip|' $CUPS_MAKEFILE
+          sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/im8dmm/openwrt-printing-packages/releases/download/cups-source/|' $CUPS_MAKEFILE
           sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=cups-1.6.3-source.tar.bz2|' $CUPS_MAKEFILE
+          sed -i 's|PKG_MD5SUM:=.*|PKG_MD5SUM:=skip|' $CUPS_MAKEFILE
           echo "Fixed cups Makefile:"
           grep -E "PKG_SOURCE_URL|PKG_MD5SUM|PKG_SOURCE" $CUPS_MAKEFILE
 
-      - name: Configure build (select ghostscript)
+      - name: Configure build (select ghostscript and dependencies)
         run: |
           cd sdk
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
           echo 'CONFIG_PACKAGE_cups=y' >> .config
+          echo 'CONFIG_PACKAGE_zlib=y' >> .config
+          echo 'CONFIG_PACKAGE_libpng=y' >> .config
+          echo 'CONFIG_PACKAGE_libjpeg=y' >> .config
+          echo 'CONFIG_PACKAGE_libtiff=y' >> .config
+          echo 'CONFIG_PACKAGE_libexpat=y' >> .config
+          echo 'CONFIG_PACKAGE_libusb-1.0=y' >> .config
           make defconfig
 
       - name: Compile ghostscript
