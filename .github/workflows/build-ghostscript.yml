@@ -33,9 +33,11 @@ jobs:
           ./scripts/feeds search ghostscript
           # 安装 ghostscript（会自动安装依赖，包括 cups）
           ./scripts/feeds install -f -p printing ghostscript
-          # 验证安装：实际路径是 feeds/printing/net/ghostscript
-          if [ -f package/feeds/printing/net/ghostscript/Makefile ]; then
-            echo "ghostscript installed successfully at package/feeds/printing/net/ghostscript"
+          # 动态查找 ghostscript 的 Makefile
+          GS_MAKEFILE=$(find package/feeds -type f -name "Makefile" | xargs grep -l "PKG_NAME:=ghostscript" 2>/dev/null | head -1)
+          if [ -n "$GS_MAKEFILE" ]; then
+            echo "Found ghostscript Makefile at $GS_MAKEFILE"
+            echo "GS_MAKEFILE=$GS_MAKEFILE" >> $GITHUB_ENV
           else
             echo "ERROR: ghostscript Makefile not found!"
             find package/feeds -name "ghostscript" -type d
@@ -44,16 +46,16 @@ jobs:
 
       - name: Remove cups dependency from ghostscript
         run: |
-          GS_MAKEFILE="sdk/package/feeds/printing/net/ghostscript/Makefile"
+          GS_MAKEFILE="${{ env.GS_MAKEFILE }}"
           cp $GS_MAKEFILE $GS_MAKEFILE.bak
-          # 删除 DEPENDS 行中的 cups（注意 cups 可能写为 +cups）
+          # 删除 DEPENDS 行中的 cups（可能写法：cups 或 +cups）
           sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
           sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
           # 删除 configure 参数中的 --with-cups
           sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
           echo "Removed cups dependency from ghostscript"
-          # 可选：查看修改后的 DEPENDS 行
-          grep -E "^DEPENDS:=" $GS_MAKEFILE || true
+          # 查看修改后的 DEPENDS 行（调试）
+          grep -E "^DEPENDS:=" $GS_MAKEFILE || echo "No DEPENDS line found"
 
       - name: Configure build (select ghostscript and base libraries)
         run: |
