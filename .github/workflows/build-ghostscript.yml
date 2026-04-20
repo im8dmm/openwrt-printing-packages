@@ -29,17 +29,37 @@ jobs:
           ./scripts/feeds update printing
           ./scripts/feeds install -a -p printing
 
+      - name: List feeds/printing directory structure (debug)
+        run: |
+          cd sdk
+          echo "Contents of feeds/printing:"
+          ls -la feeds/printing/
+          echo "Searching for ghostscript Makefile:"
+          find feeds/printing -name "Makefile" | grep -i ghostscript || echo "Not found"
+
       - name: Fix cups package source URL (to avoid download errors)
         run: |
           CUPS_MAKEFILE="sdk/feeds/printing/net/cups/Makefile"
-          cp $CUPS_MAKEFILE $CUPS_MAKEFILE.bak
-          sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/im8dmm/openwrt-printing-packages/releases/download/cups-source/|' $CUPS_MAKEFILE
-          sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=cups-1.6.3-source.tar.bz2|' $CUPS_MAKEFILE
-          sed -i 's|PKG_MD5SUM:=.*|PKG_MD5SUM:=skip|' $CUPS_MAKEFILE
+          if [ -f "$CUPS_MAKEFILE" ]; then
+            cp $CUPS_MAKEFILE $CUPS_MAKEFILE.bak
+            sed -i 's|PKG_SOURCE_URL:=.*|PKG_SOURCE_URL:=https://github.com/im8dmm/openwrt-printing-packages/releases/download/cups-source/|' $CUPS_MAKEFILE
+            sed -i 's|PKG_SOURCE:=.*|PKG_SOURCE:=cups-1.6.3-source.tar.bz2|' $CUPS_MAKEFILE
+            sed -i 's|PKG_MD5SUM:=.*|PKG_MD5SUM:=skip|' $CUPS_MAKEFILE
+          else
+            echo "Warning: cups Makefile not found at $CUPS_MAKEFILE"
+          fi
 
       - name: Remove cups dependency from ghostscript
         run: |
-          GS_MAKEFILE="sdk/feeds/printing/ghostscript/Makefile"
+          # 动态查找 ghostscript Makefile（可能在 print/ghostscript/ 或 ghostscript/ 下）
+          GS_MAKEFILE=$(find sdk/feeds/printing -type f -name "Makefile" | xargs grep -l "PKG_NAME:=ghostscript" 2>/dev/null | head -1)
+          if [ -z "$GS_MAKEFILE" ]; then
+            echo "Error: ghostscript Makefile not found"
+            echo "Searching all Makefiles for ghostscript:"
+            find sdk/feeds/printing -name "Makefile" -exec grep -H "ghostscript" {} \;
+            exit 1
+          fi
+          echo "Found ghostscript Makefile at $GS_MAKEFILE"
           cp $GS_MAKEFILE $GS_MAKEFILE.bak
           # 删除 DEPENDS 行中所有 cups 相关依赖
           sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
@@ -58,14 +78,12 @@ jobs:
           echo 'CONFIG_PACKAGE_libjpeg=y' >> .config
           echo 'CONFIG_PACKAGE_libtiff=y' >> .config
           echo 'CONFIG_PACKAGE_libexpat=y' >> .config
-          # 确保不选择 cups
           echo '# CONFIG_PACKAGE_cups is not set' >> .config
           make defconfig
 
       - name: Compile ghostscript
         run: |
           cd sdk
-          # 直接编译 ghostscript，不会触发 cups 编译
           make package/ghostscript/compile V=s
 
       - name: Upload IPK artifacts
