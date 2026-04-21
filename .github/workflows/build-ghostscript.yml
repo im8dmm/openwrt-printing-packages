@@ -1,4 +1,4 @@
-name: Build Ghostscript (Manual Copy)
+name: Build Ghostscript (Manual Copy - Final)
 
 on:
   workflow_dispatch:
@@ -36,22 +36,19 @@ jobs:
             exit 1
           fi
           cp $GS_MAKEFILE $GS_MAKEFILE.bak
-          # 删除 DEPENDS 行中的 cups
+          # 删除 DEPENDS 行中的 cups (以及可能存在的 +cups)
           sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
           sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
           # 删除 configure 参数中的 --with-cups
           sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
           echo "Removed cups dependency from ghostscript"
-          # 可选：查看修改后的 DEPENDS 行
-          grep -E "^DEPENDS:=" $GS_MAKEFILE || echo "No DEPENDS line"
 
-      - name: Update feeds for dependencies
+      - name: Update feeds (only for dependencies)
         run: |
           cd sdk
-          # 更新 feeds（但不安装 ghostscript，因为已经手动复制）
           ./scripts/feeds update -a
-          # 安装 ghostscript 需要的依赖库（这些在官方 packages feed 中）
-          ./scripts/feeds install -a zlib libpng libjpeg-turbo libtiff expat freetype fontconfig lcms2
+          # 安装 ghostscript 需要的依赖库（来自官方 packages feed）
+          ./scripts/feeds install zlib libpng libjpeg-turbo libtiff expat freetype fontconfig lcms2
 
       - name: Configure build
         run: |
