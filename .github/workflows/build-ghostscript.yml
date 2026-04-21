@@ -1,4 +1,4 @@
-name: Build Ghostscript (without CUPS)
+name: Build Ghostscript (Manual Copy)
 
 on:
   workflow_dispatch:
@@ -22,26 +22,19 @@ jobs:
           mv "$sdk_dir" sdk
           rm openwrt-sdk-*.tar.xz
 
-      - name: Install printing feed and ghostscript
+      - name: Manually copy ghostscript package to SDK
         run: |
-          cd sdk
-          # 添加 printing feed（使用你的 fork）
-          echo 'src-git printing https://github.com/im8dmm/openwrt-printing-packages.git' >> feeds.conf.default
-          # 更新所有 feeds
-          ./scripts/feeds update -a
-          # 安装 ghostscript（会自动安装依赖，包括 cups）
-          ./scripts/feeds install -f -p printing ghostscript
-          # 硬编码路径验证
-          if [ -f package/feeds/printing/net/ghostscript/Makefile ]; then
-            echo "ghostscript installed successfully at package/feeds/printing/net/ghostscript"
-          else
-            echo "ERROR: ghostscript Makefile not found!"
+          # 将 ghostscript 目录复制到 SDK 的 package 目录下
+          cp -r printing-packages/net/ghostscript sdk/package/
+          echo "ghostscript copied to sdk/package/ghostscript"
+
+      - name: Remove cups dependency from ghostscript Makefile
+        run: |
+          GS_MAKEFILE="sdk/package/ghostscript/Makefile"
+          if [ ! -f "$GS_MAKEFILE" ]; then
+            echo "ERROR: ghostscript Makefile not found at $GS_MAKEFILE"
             exit 1
           fi
-
-      - name: Remove cups dependency from ghostscript
-        run: |
-          GS_MAKEFILE="sdk/package/feeds/printing/net/ghostscript/Makefile"
           cp $GS_MAKEFILE $GS_MAKEFILE.bak
           # 删除 DEPENDS 行中的 cups
           sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
@@ -49,16 +42,30 @@ jobs:
           # 删除 configure 参数中的 --with-cups
           sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
           echo "Removed cups dependency from ghostscript"
+          # 可选：查看修改后的 DEPENDS 行
+          grep -E "^DEPENDS:=" $GS_MAKEFILE || echo "No DEPENDS line"
 
-      - name: Configure build (select ghostscript and base libraries)
+      - name: Update feeds for dependencies
         run: |
           cd sdk
+          # 更新 feeds（但不安装 ghostscript，因为已经手动复制）
+          ./scripts/feeds update -a
+          # 安装 ghostscript 需要的依赖库（这些在官方 packages feed 中）
+          ./scripts/feeds install -a zlib libpng libjpeg-turbo libtiff expat freetype fontconfig lcms2
+
+      - name: Configure build
+        run: |
+          cd sdk
+          # 选中 ghostscript 和依赖库
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
           echo 'CONFIG_PACKAGE_zlib=y' >> .config
           echo 'CONFIG_PACKAGE_libpng=y' >> .config
           echo 'CONFIG_PACKAGE_libjpeg-turbo=y' >> .config
           echo 'CONFIG_PACKAGE_libtiff=y' >> .config
           echo 'CONFIG_PACKAGE_libexpat=y' >> .config
+          echo 'CONFIG_PACKAGE_freetype=y' >> .config
+          echo 'CONFIG_PACKAGE_fontconfig=y' >> .config
+          echo 'CONFIG_PACKAGE_lcms2=y' >> .config
           # 确保 cups 不被选中
           echo '# CONFIG_PACKAGE_cups is not set' >> .config
           make defconfig
