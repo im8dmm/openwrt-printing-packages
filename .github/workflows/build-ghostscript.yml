@@ -29,33 +29,26 @@ jobs:
           echo 'src-git printing https://github.com/im8dmm/openwrt-printing-packages.git' >> feeds.conf.default
           # 更新所有 feeds
           ./scripts/feeds update -a
-          # 搜索 ghostscript 确认存在
-          ./scripts/feeds search ghostscript
           # 安装 ghostscript（会自动安装依赖，包括 cups）
           ./scripts/feeds install -f -p printing ghostscript
-          # 动态查找 ghostscript 的 Makefile
-          GS_MAKEFILE=$(find package/feeds -type f -name "Makefile" | xargs grep -l "PKG_NAME:=ghostscript" 2>/dev/null | head -1)
-          if [ -n "$GS_MAKEFILE" ]; then
-            echo "Found ghostscript Makefile at $GS_MAKEFILE"
-            echo "GS_MAKEFILE=$GS_MAKEFILE" >> $GITHUB_ENV
+          # 硬编码路径验证
+          if [ -f package/feeds/printing/net/ghostscript/Makefile ]; then
+            echo "ghostscript installed successfully at package/feeds/printing/net/ghostscript"
           else
             echo "ERROR: ghostscript Makefile not found!"
-            find package/feeds -name "ghostscript" -type d
             exit 1
           fi
 
       - name: Remove cups dependency from ghostscript
         run: |
-          GS_MAKEFILE="${{ env.GS_MAKEFILE }}"
+          GS_MAKEFILE="sdk/package/feeds/printing/net/ghostscript/Makefile"
           cp $GS_MAKEFILE $GS_MAKEFILE.bak
-          # 删除 DEPENDS 行中的 cups（可能写法：cups 或 +cups）
+          # 删除 DEPENDS 行中的 cups
           sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
           sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
           # 删除 configure 参数中的 --with-cups
           sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
           echo "Removed cups dependency from ghostscript"
-          # 查看修改后的 DEPENDS 行（调试）
-          grep -E "^DEPENDS:=" $GS_MAKEFILE || echo "No DEPENDS line found"
 
       - name: Configure build (select ghostscript and base libraries)
         run: |
@@ -66,7 +59,7 @@ jobs:
           echo 'CONFIG_PACKAGE_libjpeg-turbo=y' >> .config
           echo 'CONFIG_PACKAGE_libtiff=y' >> .config
           echo 'CONFIG_PACKAGE_libexpat=y' >> .config
-          # 确保不选中 cups
+          # 确保 cups 不被选中
           echo '# CONFIG_PACKAGE_cups is not set' >> .config
           make defconfig
 
