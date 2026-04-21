@@ -1,4 +1,4 @@
-name: Build Ghostscript (Manual Copy - Final)
+name: Build Ghostscript (Manual Copy - Safe)
 
 on:
   workflow_dispatch:
@@ -24,36 +24,33 @@ jobs:
 
       - name: Manually copy ghostscript package to SDK
         run: |
-          # 将 ghostscript 目录复制到 SDK 的 package 目录下
           cp -r printing-packages/net/ghostscript sdk/package/
           echo "ghostscript copied to sdk/package/ghostscript"
 
-      - name: Remove cups dependency from ghostscript Makefile
+      - name: Remove cups dependency safely
         run: |
           GS_MAKEFILE="sdk/package/ghostscript/Makefile"
-          if [ ! -f "$GS_MAKEFILE" ]; then
-            echo "ERROR: ghostscript Makefile not found at $GS_MAKEFILE"
-            exit 1
-          fi
-          cp $GS_MAKEFILE $GS_MAKEFILE.bak
-          # 删除 DEPENDS 行中的 cups (以及可能存在的 +cups)
-          sed -i '/DEPENDS:=/ s/ \+cups\( \|$\)//g' $GS_MAKEFILE
-          sed -i '/DEPENDS:=/ s/cups //g' $GS_MAKEFILE
-          # 删除 configure 参数中的 --with-cups
-          sed -i 's/--with-cups[^ ]*//g' $GS_MAKEFILE
-          echo "Removed cups dependency from ghostscript"
+          cp $GS_MAKEFILE $GS_MAKEFILE.orig
+          # 删除 DEPENDS 中的 cups 单词
+          sed -i 's/\<cups\>//g' $GS_MAKEFILE
+          # 清理多余空格
+          sed -i 's/  */ /g' $GS_MAKEFILE
+          sed -i 's/: /:/g' $GS_MAKEFILE
+          # 将 --with-cups 替换为 --without-cups（避免语法错误）
+          sed -i 's/--with-cups/--without-cups/g' $GS_MAKEFILE
+          echo "Modified ghostscript Makefile"
+          # 显示修改后的关键行（调试）
+          grep -E "^DEPENDS|CONFIGURE_ARGS" $GS_MAKEFILE || true
 
-      - name: Update feeds (only for dependencies)
+      - name: Update feeds for dependencies
         run: |
           cd sdk
           ./scripts/feeds update -a
-          # 安装 ghostscript 需要的依赖库（来自官方 packages feed）
           ./scripts/feeds install zlib libpng libjpeg-turbo libtiff expat freetype fontconfig lcms2
 
       - name: Configure build
         run: |
           cd sdk
-          # 选中 ghostscript 和依赖库
           echo 'CONFIG_PACKAGE_ghostscript=y' >> .config
           echo 'CONFIG_PACKAGE_zlib=y' >> .config
           echo 'CONFIG_PACKAGE_libpng=y' >> .config
@@ -63,7 +60,6 @@ jobs:
           echo 'CONFIG_PACKAGE_freetype=y' >> .config
           echo 'CONFIG_PACKAGE_fontconfig=y' >> .config
           echo 'CONFIG_PACKAGE_lcms2=y' >> .config
-          # 确保 cups 不被选中
           echo '# CONFIG_PACKAGE_cups is not set' >> .config
           make defconfig
 
